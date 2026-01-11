@@ -5,7 +5,12 @@ project(ImageFileFormatConverter VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(ImageFileFormatConverter main.cpp)
+add_executable(ImageFileFormatConverter
+  main.cpp
+  MyImGui.cpp
+  PaletteGenerator.cpp
+  Quantization.cpp
+)
 
 add_subdirectory(SDL)
 target_link_libraries(ImageFileFormatConverter PRIVATE SDL3::SDL3)
