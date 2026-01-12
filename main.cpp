@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <array>
 #include <span>
+#include <vector>
 
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
@@ -16,8 +17,9 @@
 #include "stb_image.h"
 
 #include "MyImGui.h"
-#include "PaletteGenerator.h"
+#include "Palette.h"
 #include "Quantization.h"
+#include "Dithering.h"
 
 static SDL_Window *gWindow;
 static SDL_Renderer *gRenderer;
@@ -54,17 +56,17 @@ static std::vector<std::byte> LoadFromFile(
 
 static std::vector<std::byte> ProcessImage(
     std::span<std::byte> originalImage,
-    int imageWidth, int imageHeight, int mode/*, int dithering*/)
+    int imageWidth, int imageHeight, int mode, int dithering)
 {
-  gPalette = PaletteGenerator::Generate(originalImage, mode);
+  gPalette = Palette::Generate(originalImage, mode);
 
-  //if (dithering == 0) {
-    return Quantization::apply(originalImage,
+  if (dithering == 0) {
+    return Quantization::Apply(originalImage,
         imageWidth, imageHeight, gPalette);
-  //}
+  }
 
-  //return Dithering::apply(originalImage,
-  //    imageWidth, imageHeight, gPalette);
+  return Dithering::Apply(originalImage,
+      imageWidth, imageHeight, gPalette);
 }
 
 int main(int /*argc*/, char **/*argv*/)
@@ -95,7 +97,7 @@ int main(int /*argc*/, char **/*argv*/)
       "assets/obrazek1.bmp", imageWidth, imageHeight);
 
   std::vector<std::byte> processedImage = ProcessImage(
-      originalImage, imageWidth, imageHeight, gCurrentMode);
+      originalImage, imageWidth, imageHeight, gCurrentMode, gCurrentDithering);
 
   SDL_Texture* texture = SDL_CreateTexture(
       gRenderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC,
@@ -134,7 +136,7 @@ int main(int /*argc*/, char **/*argv*/)
           "Odcienie Szarości Dedykowane\0"))
     {
       processedImage = ProcessImage(
-          originalImage, imageWidth, imageHeight, gCurrentMode);
+          originalImage, imageWidth, imageHeight, gCurrentMode, gCurrentDithering);
       SDL_UpdateTexture(
           texture, nullptr, processedImage.data(), imageWidth * 4); 
     }
@@ -143,7 +145,7 @@ int main(int /*argc*/, char **/*argv*/)
           "Brak\0Bayer\0Floyd-Steinberg\0"))
     {
       processedImage = ProcessImage(
-          originalImage, imageWidth, imageHeight, gCurrentMode);
+          originalImage, imageWidth, imageHeight, gCurrentMode, gCurrentDithering);
       SDL_UpdateTexture(
           texture, nullptr, processedImage.data(), imageWidth * 4); 
     }

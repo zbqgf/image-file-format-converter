@@ -8,8 +8,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(ImageFileFormatConverter
   main.cpp
   MyImGui.cpp
-  PaletteGenerator.cpp
+  Palette.cpp
   Quantization.cpp
+  Dithering.cpp
 )
 
 add_subdirectory(SDL)

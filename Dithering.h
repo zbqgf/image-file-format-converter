@@ -1,13 +1,13 @@
 #pragma once
 
-#include <span>
 #include <vector>
+#include <span>
 
-namespace Quantization
+namespace Dithering
 {
 
   std::vector<std::byte> Apply(std::span<std::byte> image,
       int imageWidth, int imageHeight,
       std::span<uint32_t> palette);
 
-} //Quantization
+} //Dithering
