@@ -66,7 +66,7 @@ static std::vector<std::byte> ProcessImage(
   }
 
   return Dithering::Apply(originalImage,
-      imageWidth, imageHeight, gPalette);
+      imageWidth, imageHeight, gPalette, dithering);
 }
 
 int main(int /*argc*/, char **/*argv*/)
