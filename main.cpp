@@ -58,15 +58,16 @@ static std::vector<std::byte> ProcessImage(
     std::span<std::byte> originalImage,
     int imageWidth, int imageHeight, int mode, int dithering)
 {
-  gPalette = Palette::Generate(originalImage, mode);
+  gPalette = Palette::Generate(
+      originalImage, imageWidth, imageHeight, mode);
 
   if (dithering == 0) {
-    return Quantization::Apply(originalImage,
-        imageWidth, imageHeight, gPalette);
+    return Quantization::Apply(
+        originalImage,imageWidth, imageHeight, gPalette);
   }
 
-  return Dithering::Apply(originalImage,
-      imageWidth, imageHeight, gPalette, dithering);
+  return Dithering::Apply(
+      originalImage, imageWidth, imageHeight, gPalette, dithering);
 }
 
 int main(int /*argc*/, char **/*argv*/)
