@@ -14,12 +14,15 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_BMP
+#include <cstring>
+
 #include "stb_image.h"
 
 #include "MyImGui.h"
 #include "Palette.h"
 #include "Quantization.h"
 #include "Dithering.h"
+#include "fileManagement.h"
 
 static SDL_Window *gWindow;
 static SDL_Renderer *gRenderer;
@@ -153,12 +156,23 @@ int main(int /*argc*/, char **/*argv*/)
 
     MyImGui::SettingsPalette(gPalette);
 
+    if (ImGui::Button("Zapisz do pliku")) {
+        fileManagement::saveToFile(
+            processedImage, "images/image.dg5", imageWidth, imageHeight, gCurrentMode, gCurrentDithering
+        );
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Odczytaj z pliku")) {
+         fileManagement::loadFromFile("images/image.dg5");
+    }
+
     ImGui::End();
 
     ImGui::Begin("obrazek1.bmp");
 
     ImVec2 displaySize = ImVec2(imageWidth, imageHeight);
     MyImGui::Image((ImTextureID)texture, displaySize);
+
 
     ImGui::End();
 

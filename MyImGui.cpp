@@ -1,5 +1,7 @@
 #include "MyImGui.h"
 
+#include <cmath>
+
 namespace
 {
   constexpr ImVec2 kDefaultUV0(0.0f, 0.0f);
