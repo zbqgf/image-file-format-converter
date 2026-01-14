@@ -60,7 +60,69 @@ namespace
       int imageWidth, int imageHeight,
       std::span<uint32_t> palette)
   {
-    return {};
+    size_t pixelCount = imageWidth * imageHeight;
+    size_t resultSize = pixelCount * 4;
+    std::vector<std::byte> result(resultSize);
+
+    uint32_t* imageData = reinterpret_cast<uint32_t*>(image.data());
+    uint32_t* resultData = reinterpret_cast<uint32_t*>(result.data());
+
+    std::vector<float> rErrors(pixelCount, 0.0f);
+    std::vector<float> gErrors(pixelCount, 0.0f);
+    std::vector<float> bErrors(pixelCount, 0.0f);
+
+    for (int i = 0; i < imageHeight; ++i) {
+      for (int j = 0; j < imageWidth; ++j) {
+        int idx = j + i * imageWidth;
+
+        auto unpackedPixelColor = Helpers::UnpackColor(imageData[idx]);
+
+        uint8_t r = ClampToByte(unpackedPixelColor[0] + rErrors[idx]);
+        uint8_t g = ClampToByte(unpackedPixelColor[1] + gErrors[idx]);
+        uint8_t b = ClampToByte(unpackedPixelColor[2] + bErrors[idx]);
+
+        uint32_t closestColor = Palette::FindClosestColorFromPalette(
+            Helpers::PackColor(r, g, b, unpackedPixelColor[3]), palette);
+
+        resultData[idx] = closestColor;
+
+        auto closestColorUnpacked = Helpers::UnpackColor(closestColor);
+
+        int rError = r - closestColorUnpacked[0];
+        int gError = g - closestColorUnpacked[1];
+        int bError = b - closestColorUnpacked[2];
+
+        if (j + 1 < imageWidth) {
+          size_t s = j + 1 + i * imageWidth;
+          rErrors[s] += rError * 7 / 16.0f;
+          gErrors[s] += gError * 7 / 16.0f;
+          bErrors[s] += bError * 7 / 16.0f;
+        }
+
+        if (j > 0 && i + 1 < imageHeight) {
+          size_t s = j - 1 + (i + 1) * imageWidth;
+          rErrors[s] += rError * 3 / 16.0f;
+          gErrors[s] += gError * 3 / 16.0f;
+          bErrors[s] += bError * 3 / 16.0f;
+        }
+
+        if (i + 1 < imageHeight) {
+          size_t s = j + (i + 1) * imageWidth;
+          rErrors[s] += rError * 5 / 16.0f;
+          gErrors[s] += gError * 5 / 16.0f;
+          bErrors[s] += bError * 5 / 16.0f;
+        }
+
+        if (j + 1 < imageWidth && i + 1 < imageHeight) {
+          size_t s = j + 1 + (i + 1) * imageWidth;
+          rErrors[s] += rError * 1 / 16.0f;
+          gErrors[s] += gError * 1 / 16.0f;
+          bErrors[s] += bError * 1 / 16.0f;
+        }
+      }
+    }
+
+    return result;
   }
 
 }
@@ -71,6 +133,9 @@ Dithering::Apply(std::span<std::byte> image,
     std::span<uint32_t> palette,
     int mode)
 {
-  if (mode == 1) return ApplyBayerDithering(image, imageWidth, imageHeight, palette);
-  else if (mode == 2) return ApplyFloydSteinbergDithering(image, imageWidth, imageHeight, palette);
+  if (mode == 1) {
+    return ApplyBayerDithering(image, imageWidth, imageHeight, palette);
+  } else if (mode == 2) {
+    return ApplyFloydSteinbergDithering(image, imageWidth, imageHeight, palette);
+  }
 }
