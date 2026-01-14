@@ -21,16 +21,31 @@
 #include "Quantization.h"
 #include "Dithering.h"
 
-static SDL_Window *gWindow;
-static SDL_Renderer *gRenderer;
+struct AppState
+{
+  SDL_Window* window = nullptr;
+  SDL_Renderer* renderer = nullptr;
 
-static int gWidth = 1280;
-static int gHeight = 720;
+  int width = 1280;
+  int height = 720;
 
-static int gCurrentMode;
-static int gCurrentDithering;
-static bool gEnablePreview;
-static std::vector<uint32_t> gPalette;
+  int mode = 0;
+  int dithering = 0;
+  bool enablePreview = 0;
+
+  std::vector<std::byte> originalImage;
+  std::vector<std::byte> processedImage;
+  int imageWidth, imageHeight;
+
+  SDL_Texture* texture = nullptr;
+
+  std::vector<uint32_t> palette;
+
+  bool hasPendingOpen = false;
+  std::filesystem::path pendingOpenPath;
+};
+
+static AppState gApp;
 
 static std::vector<std::byte> LoadFromFile(
     const std::filesystem::path& path, int& x, int& y)
@@ -58,16 +73,59 @@ static std::vector<std::byte> ProcessImage(
     std::span<std::byte> originalImage,
     int imageWidth, int imageHeight, int mode, int dithering)
 {
-  gPalette = Palette::Generate(
+  gApp.palette = Palette::Generate(
       originalImage, imageWidth, imageHeight, mode);
 
   if (dithering == 0) {
     return Quantization::Apply(
-        originalImage,imageWidth, imageHeight, gPalette);
+        originalImage, imageWidth, imageHeight, gApp.palette);
   }
 
   return Dithering::Apply(
-      originalImage, imageWidth, imageHeight, gPalette, dithering);
+        originalImage, imageWidth, imageHeight, gApp.palette, dithering);
+}
+
+void ReprocessImage(AppState& app)
+{
+  if (!app.originalImage.empty()) {
+    app.processedImage = ProcessImage(
+        gApp.originalImage,
+        gApp.imageWidth,
+        gApp.imageHeight,
+        gApp.mode,
+        gApp.dithering);
+
+    if (!app.texture) {
+      app.texture = SDL_CreateTexture(
+          app.renderer,
+          SDL_PIXELFORMAT_RGBA32,
+          SDL_TEXTUREACCESS_STATIC,
+          app.imageWidth,
+          app.imageHeight);
+    }
+
+    SDL_UpdateTexture(
+        app.texture,
+        nullptr,
+        app.processedImage.data(),
+        app.imageWidth * 4);
+  }
+}
+
+static const SDL_DialogFileFilter filters[] = {
+    { "BMP images", "bmp" },
+    //{ "DG8 images", "dg8" },
+    //{ "All images", "bmp;dg8" }
+};
+
+void SDLCALL OpenFileDialogCallback(void* userData, const char* const* fileList, int filter)
+{
+  if (!fileList || !*fileList) return;
+
+  auto state = static_cast<AppState*>(userData);
+
+  state->pendingOpenPath = *fileList;
+  state->hasPendingOpen = true;
 }
 
 int main(int /*argc*/, char **/*argv*/)
@@ -76,7 +134,7 @@ int main(int /*argc*/, char **/*argv*/)
 
   float mainScale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
 
-  SDL_CreateWindowAndRenderer("Projekt", gWidth, gHeight, 0, &gWindow, &gRenderer);
+  SDL_CreateWindowAndRenderer("Projekt", gApp.width, gApp.height, 0, &gApp.window, &gApp.renderer);
 
   ImGui::CreateContext();
   ImGuiIO& io = ImGui::GetIO(); (void)io;
@@ -90,21 +148,8 @@ int main(int /*argc*/, char **/*argv*/)
   style.ScaleAllSizes(mainScale);
   style.FontScaleDpi = mainScale;
 
-  ImGui_ImplSDL3_InitForSDLRenderer(gWindow, gRenderer);
-  ImGui_ImplSDLRenderer3_Init(gRenderer);
-
-  int imageWidth, imageHeight;
-  std::vector<std::byte> originalImage = LoadFromFile(
-      "assets/obrazek1.bmp", imageWidth, imageHeight);
-
-  std::vector<std::byte> processedImage = ProcessImage(
-      originalImage, imageWidth, imageHeight, gCurrentMode, gCurrentDithering);
-
-  SDL_Texture* texture = SDL_CreateTexture(
-      gRenderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC,
-      imageWidth, imageHeight);
-
-  SDL_UpdateTexture(texture, 0, processedImage.data(), imageWidth * 4); 
+  ImGui_ImplSDL3_InitForSDLRenderer(gApp.window, gApp.renderer);
+  ImGui_ImplSDLRenderer3_Init(gApp.renderer);
 
   bool shouldQuit = false;
   while (!shouldQuit) {
@@ -117,56 +162,88 @@ int main(int /*argc*/, char **/*argv*/)
       }
     }
 
+    if (gApp.hasPendingOpen) {
+      gApp.hasPendingOpen = false;
+
+      gApp.originalImage = LoadFromFile(gApp.pendingOpenPath, gApp.imageWidth, gApp.imageHeight);
+
+      if (gApp.texture) {
+        SDL_DestroyTexture(gApp.texture);
+        gApp.texture = nullptr;
+      }
+
+      ReprocessImage(gApp);
+    }
+
     ImGui_ImplSDLRenderer3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
 
+    ImGuiWindowFlags windowFlags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
     ImGui::SetNextWindowViewport(viewport->ID);
+    windowFlags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+    windowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
-    ImGui::DockSpaceOverViewport();
+    ImGui::Begin("DockSpace", nullptr, windowFlags);
+    ImGui::DockSpace(ImGui::GetID("MainDock"), ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
-    ImGui::Begin("Ustawienia");
+    ImGui::BeginMenuBar();
 
-    if (ImGui::Combo("Tryb", &gCurrentMode,
-          "Paleta Kolorowa Narzucona\0"
-          "Odcienie Szarości Narzucone\0"
-          "Paleta Kolorowa Dedykowana\0"
-          "Odcienie Szarości Dedykowane\0"))
-    {
-      processedImage = ProcessImage(
-          originalImage, imageWidth, imageHeight, gCurrentMode, gCurrentDithering);
-      SDL_UpdateTexture(
-          texture, nullptr, processedImage.data(), imageWidth * 4); 
+    if (ImGui::BeginMenu("Menu")) {
+      if (ImGui::MenuItem("Otwórz")) {
+        SDL_ShowOpenFileDialog(OpenFileDialogCallback, &gApp, gApp.window, filters, 1, nullptr, 0);
+      }
+
+      if (ImGui::MenuItem("Zapisz jako")) {
+      }
+
+      ImGui::Separator();
+
+      if (ImGui::MenuItem("O programie")) {
+      }
+
+      ImGui::EndMenu();
     }
 
-    if (ImGui::Combo("Dithering", &gCurrentDithering,
-          "Brak\0Bayer\0Floyd-Steinberg\0"))
+    ImGui::EndMenuBar();
+
+    ImGui::End();
+
+    windowFlags = ImGuiWindowFlags_NoCollapse;
+    ImGui::Begin("Ustawienia", nullptr, windowFlags);
     {
-      processedImage = ProcessImage(
-          originalImage, imageWidth, imageHeight, gCurrentMode, gCurrentDithering);
-      SDL_UpdateTexture(
-          texture, nullptr, processedImage.data(), imageWidth * 4); 
+      if (ImGui::Combo("Tryb", &gApp.mode,
+            "Paleta Kolorowa Narzucona\0"
+            "Odcienie Szarości Narzucone\0"
+            "Paleta Kolorowa Dedykowana\0"
+            "Odcienie Szarości Dedykowane\0")) {
+        ReprocessImage(gApp);
+      }
+
+      if (ImGui::Combo("Dithering", &gApp.dithering,
+            "Brak\0Bayer\0Floyd-Steinberg\0")) {
+        ReprocessImage(gApp);
+      }
+
+      MyImGui::SettingsPalette(gApp.palette);
     }
-
-    MyImGui::SettingsPalette(gPalette);
-
     ImGui::End();
 
     ImGui::Begin("obrazek1.bmp");
 
-    ImVec2 displaySize = ImVec2(imageWidth, imageHeight);
-    MyImGui::Image((ImTextureID)texture, displaySize);
+    ImVec2 displaySize = ImVec2(gApp.imageWidth, gApp.imageHeight);
+    MyImGui::Image((ImTextureID)gApp.texture, displaySize);
 
     ImGui::End();
 
     ImGui::Render();
-    SDL_SetRenderDrawColor(gRenderer, 0, 0, 0, 0xff);
-    SDL_RenderClear(gRenderer);
-    ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), gRenderer);
-    SDL_RenderPresent(gRenderer);
+    SDL_SetRenderDrawColor(gApp.renderer, 0, 0, 0, 0xff);
+    SDL_RenderClear(gApp.renderer);
+    ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), gApp.renderer);
+    SDL_RenderPresent(gApp.renderer);
   }
 
   SDL_Quit();
