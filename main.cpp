@@ -14,12 +14,15 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_BMP
+#include <cstring>
+
 #include "stb_image.h"
 
 #include "MyImGui.h"
 #include "Palette.h"
 #include "Quantization.h"
 #include "Dithering.h"
+#include "fileManagement.h"
 
 struct AppState
 {
@@ -229,8 +232,29 @@ int main(int /*argc*/, char **/*argv*/)
       }
 
       MyImGui::SettingsPalette(gApp.palette);
+
+      if (ImGui::Button("Zapisz do pliku")) {
+        fileManagement::saveToFile(
+            processedImage, "images/image.dg5", imageWidth, imageHeight, gCurrentMode, gCurrentDithering
+            );
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Odczytaj z pliku")) {
+        fileManagement::DG5ImageData imageData = fileManagement::loadFromFile("images/image.dg5");
+        originalImage = std::vector<std::byte>(imageData.image.begin(), imageData.image.end());
+        imageWidth = imageData.width;
+        imageHeight = imageData.height;
+        processedImage = ProcessImage(
+            originalImage, imageWidth, imageHeight, gCurrentMode, gCurrentDithering);
+        SDL_UpdateTexture(
+            texture, nullptr, processedImage.data(), imageWidth * 4);
+
+        gPalette = Palette::Generate(originalImage, imageWidth, imageHeight, gCurrentMode);
+      }
+
+      ImGui::End();
     }
-    ImGui::End();
+
 
     ImGui::Begin("obrazek1.bmp");
 

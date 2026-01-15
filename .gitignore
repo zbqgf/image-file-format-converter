@@ -41,3 +41,6 @@
 *.dwo
 
 build/
+images/*
+cmake-build-debug
+.idea

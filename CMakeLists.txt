@@ -11,6 +11,7 @@ add_executable(ImageFileFormatConverter
   Palette.cpp
   Quantization.cpp
   Dithering.cpp
+  fileManagement.cpp
 )
 
 add_subdirectory(SDL)

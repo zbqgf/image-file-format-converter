@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstdint>
+#include <span>
+
 #include "imgui.h"
 
-#include <span>
 
 namespace MyImGui
 {
@@ -18,6 +20,6 @@ namespace MyImGui
       ImVec2 uv0, ImVec2 uv1,
       ImVec4 bgColor, ImVec4 tintColor);
 
-  void SettingsPalette(std::span<uint32_t> palette);
+  void SettingsPalette(std::span<std::uint32_t> palette);
 
 } //MyImGui
