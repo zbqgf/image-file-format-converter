@@ -163,7 +163,16 @@ int main(int /*argc*/, char **/*argv*/)
     }
     ImGui::SameLine();
     if (ImGui::Button("Odczytaj z pliku")) {
-         fileManagement::loadFromFile("images/image.dg5");
+        fileManagement::DG5ImageData imageData = fileManagement::loadFromFile("images/image.dg5");
+        originalImage = std::vector<std::byte>(imageData.image.begin(), imageData.image.end());
+        imageWidth = imageData.width;
+        imageHeight = imageData.height;
+        processedImage = ProcessImage(
+            originalImage, imageWidth, imageHeight, gCurrentMode, gCurrentDithering);
+        SDL_UpdateTexture(
+            texture, nullptr, processedImage.data(), imageWidth * 4);
+        
+        gPalette = Palette::Generate(originalImage, imageWidth, imageHeight, gCurrentMode);
     }
 
     ImGui::End();

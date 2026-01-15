@@ -5,6 +5,12 @@
 #include <vector>
 
 namespace fileManagement {
+    struct DG5ImageData {
+        std::vector<std::byte> image = {};
+        int width = 0;
+        int height = 0;
+    };
+
     void saveToFile(std::vector<std::byte>& image, std::filesystem::path path, int width, int height, int mode, int dithering);
-    std::vector<std::byte> loadFromFile(std::filesystem::path path);
+    DG5ImageData loadFromFile(std::filesystem::path path);
 }
