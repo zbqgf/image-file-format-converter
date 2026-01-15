@@ -13,10 +13,12 @@
 #include "imgui_impl_sdlrenderer3.h"
 
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_ONLY_BMP
 #include <cstring>
 
 #include "stb_image.h"
+#include "stb_image_write.h"
 
 #include "MyImGui.h"
 #include "Palette.h"
@@ -46,11 +48,14 @@ struct AppState
 
   bool hasPendingOpen = false;
   std::filesystem::path pendingOpenPath;
+
+  bool hasPendingSave = false;
+  std::filesystem::path pendingSavePath;
 };
 
 static AppState gApp;
 
-static std::vector<std::byte> LoadFromFile(
+static std::vector<std::byte> LoadBMP(
     const std::filesystem::path& path, int& x, int& y)
 {
   auto bufferSize = std::filesystem::file_size(path);
@@ -70,6 +75,13 @@ static std::vector<std::byte> LoadFromFile(
   stbi_image_free(imageData);
 
   return result;
+}
+
+static void WriteBMP(
+    std::filesystem::path& path, std::span<std::byte> image, int x, int y)
+{
+  void* data = reinterpret_cast<void*>(image.data());
+  stbi_write_bmp(path.string().c_str(), x, y, 4, data);
 }
 
 static std::vector<std::byte> ProcessImage(
@@ -117,8 +129,8 @@ void ReprocessImage(AppState& app)
 
 static const SDL_DialogFileFilter filters[] = {
     { "BMP images", "bmp" },
-    //{ "DG8 images", "dg8" },
-    //{ "All images", "bmp;dg8" }
+    { "DG5 images", "dg5" },
+    { "All images", "bmp;dg8" }
 };
 
 void SDLCALL OpenFileDialogCallback(void* userData, const char* const* fileList, int filter)
@@ -129,6 +141,16 @@ void SDLCALL OpenFileDialogCallback(void* userData, const char* const* fileList,
 
   state->pendingOpenPath = *fileList;
   state->hasPendingOpen = true;
+}
+
+void SDLCALL SaveFileDialogCallback(void* userData, const char* const* fileList, int filter)
+{
+  if (!fileList || !*fileList) return;
+
+  auto state = static_cast<AppState*>(userData);
+
+  state->pendingSavePath = *fileList;
+  state->hasPendingSave = true;
 }
 
 int main(int /*argc*/, char **/*argv*/)
@@ -168,7 +190,14 @@ int main(int /*argc*/, char **/*argv*/)
     if (gApp.hasPendingOpen) {
       gApp.hasPendingOpen = false;
 
-      gApp.originalImage = LoadFromFile(gApp.pendingOpenPath, gApp.imageWidth, gApp.imageHeight);
+      if (gApp.pendingOpenPath.extension() == ".bmp") {
+         gApp.originalImage = LoadBMP(gApp.pendingOpenPath, gApp.imageWidth, gApp.imageHeight);
+      } else if (gApp.pendingOpenPath.extension() == ".dg5") {
+        fileManagement::DG5ImageData imageData = fileManagement::loadFromFile(gApp.pendingOpenPath);
+        gApp.imageWidth = imageData.width;
+        gApp.imageHeight = imageData.height;
+        gApp.originalImage = std::vector<std::byte>(imageData.image.begin(), imageData.image.end());
+      }
 
       if (gApp.texture) {
         SDL_DestroyTexture(gApp.texture);
@@ -176,6 +205,19 @@ int main(int /*argc*/, char **/*argv*/)
       }
 
       ReprocessImage(gApp);
+    }
+
+    if (gApp.hasPendingSave) {
+      gApp.hasPendingSave = false;
+
+      if (gApp.pendingSavePath.extension() == ".bmp") {
+        WriteBMP(gApp.pendingSavePath, gApp.processedImage, gApp.imageWidth, gApp.imageHeight);
+      } else if (gApp.pendingSavePath.extension() == ".dg5") {
+        fileManagement::saveToFile(
+            gApp.processedImage, gApp.pendingSavePath, 
+            gApp.imageWidth, gApp.imageHeight, 
+            gApp.mode, gApp.dithering);
+      }
     }
 
     ImGui_ImplSDLRenderer3_NewFrame();
@@ -192,27 +234,6 @@ int main(int /*argc*/, char **/*argv*/)
 
     ImGui::Begin("DockSpace", nullptr, windowFlags);
     ImGui::DockSpace(ImGui::GetID("MainDock"), ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
-
-    ImGui::BeginMenuBar();
-
-    if (ImGui::BeginMenu("Menu")) {
-      if (ImGui::MenuItem("Otwórz")) {
-        SDL_ShowOpenFileDialog(OpenFileDialogCallback, &gApp, gApp.window, filters, 1, nullptr, 0);
-      }
-
-      if (ImGui::MenuItem("Zapisz jako")) {
-      }
-
-      ImGui::Separator();
-
-      if (ImGui::MenuItem("O programie")) {
-      }
-
-      ImGui::EndMenu();
-    }
-
-    ImGui::EndMenuBar();
-
     ImGui::End();
 
     windowFlags = ImGuiWindowFlags_NoCollapse;
@@ -234,29 +255,20 @@ int main(int /*argc*/, char **/*argv*/)
       MyImGui::SettingsPalette(gApp.palette);
 
       if (ImGui::Button("Zapisz do pliku")) {
-        fileManagement::saveToFile(
-            processedImage, "images/image.dg5", imageWidth, imageHeight, gCurrentMode, gCurrentDithering
-            );
+        SDL_ShowSaveFileDialog(SaveFileDialogCallback, &gApp, gApp.window, filters, 2, nullptr);
       }
-      ImGui::SameLine();
-      if (ImGui::Button("Odczytaj z pliku")) {
-        fileManagement::DG5ImageData imageData = fileManagement::loadFromFile("images/image.dg5");
-        originalImage = std::vector<std::byte>(imageData.image.begin(), imageData.image.end());
-        imageWidth = imageData.width;
-        imageHeight = imageData.height;
-        processedImage = ProcessImage(
-            originalImage, imageWidth, imageHeight, gCurrentMode, gCurrentDithering);
-        SDL_UpdateTexture(
-            texture, nullptr, processedImage.data(), imageWidth * 4);
 
-        gPalette = Palette::Generate(originalImage, imageWidth, imageHeight, gCurrentMode);
+      ImGui::SameLine();
+
+      if (ImGui::Button("Odczytaj z pliku")) {
+        SDL_ShowOpenFileDialog(OpenFileDialogCallback, &gApp, gApp.window, filters, 3, nullptr, 0);
       }
 
       ImGui::End();
     }
 
 
-    ImGui::Begin("obrazek1.bmp");
+    ImGui::Begin("Obrazk");
 
     ImVec2 displaySize = ImVec2(gApp.imageWidth, gApp.imageHeight);
     MyImGui::Image((ImTextureID)gApp.texture, displaySize);
